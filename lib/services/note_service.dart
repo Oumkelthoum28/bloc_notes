@@ -1,28 +1,33 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/note.dart';
 
-// Les options de tri
 enum TriOption {
-  dateRecent,   // plus récent d'abord
-  dateAncien,   // plus ancien d'abord
-  titreAZ,      // A → Z
-  titreZA,      // Z → A
+  dateRecent,
+  dateAncien,
+  titreAZ,
+  titreZA,
 }
 
 class NoteService extends ChangeNotifier {
   final List<Note> _notes = [];
-  
-  // Option de tri actuelle
+  final SharedPreferences _prefs;
+  static const String _key = 'notes'; // clé de sauvegarde
+
+  // Constructeur — reçoit l'instance SharedPreferences
+  NoteService(this._prefs) {
+    _loadNotes(); // charger les notes au démarrage
+  }
+
   TriOption _tri = TriOption.dateRecent;
   TriOption get tri => _tri;
 
-  // Changer le tri
   void changerTri(TriOption option) {
     _tri = option;
     notifyListeners();
   }
 
-  // Retourner les notes triées
   List<Note> get notes {
     final liste = List<Note>.from(_notes);
     switch (_tri) {
@@ -42,31 +47,46 @@ class NoteService extends ChangeNotifier {
     return List.unmodifiable(liste);
   }
 
-  // Nombre de notes
   int get count => _notes.length;
 
-  // Ajouter une note
-  void addNote(Note note) {
-    _notes.add(note);
-    notifyListeners();
-  }
-
-  // Modifier une note
-  void updateNote(Note note) {
-    final index = _notes.indexWhere((n) => n.id == note.id);
-    if (index != -1) {
-      _notes[index] = note;
+  // Charger les notes depuis SharedPreferences
+  void _loadNotes() {
+    final String? data = _prefs.getString(_key);
+    if (data != null) {
+      final List<dynamic> jsonList = jsonDecode(data);
+      _notes.clear();
+      _notes.addAll(jsonList.map((e) => Note.fromJson(e)).toList());
       notifyListeners();
     }
   }
 
-  // Supprimer une note
-  void deleteNote(String id) {
-    _notes.removeWhere((n) => n.id == id);
+  // Sauvegarder les notes dans SharedPreferences
+  Future<void> _saveNotes() async {
+    final String data = jsonEncode(_notes.map((e) => e.toJson()).toList());
+    await _prefs.setString(_key, data);
+  }
+
+  void addNote(Note note) {
+    _notes.add(note);
+    _saveNotes(); // sauvegarder
     notifyListeners();
   }
 
-  // Chercher une note par id
+  void updateNote(Note note) {
+    final index = _notes.indexWhere((n) => n.id == note.id);
+    if (index != -1) {
+      _notes[index] = note;
+      _saveNotes(); // sauvegarder
+      notifyListeners();
+    }
+  }
+
+  void deleteNote(String id) {
+    _notes.removeWhere((n) => n.id == id);
+    _saveNotes(); // sauvegarder
+    notifyListeners();
+  }
+
   Note? getNoteById(String id) {
     try {
       return _notes.firstWhere((n) => n.id == id);
@@ -75,7 +95,6 @@ class NoteService extends ChangeNotifier {
     }
   }
 
-  // Rechercher des notes
   List<Note> search(String query) {
     if (query.isEmpty) return notes;
     return notes
